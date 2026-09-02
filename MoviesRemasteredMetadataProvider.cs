@@ -288,7 +288,11 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
                 resolution = entry.TechSpecs.Resolution,
                 soundMix   = entry.TechSpecs.SoundMix,
             },
-            ["certificate"]   = entry.Certificate,
+            // "certification" and "released" are the canonical keys ScraperController/
+            // MetadataResolutionService read (see FieldMap and BuildMovieDetails) -- named
+            // to match those, not MRDb's own field names, so this data actually surfaces
+            // through to the NFO/Kodi instead of sitting unread under a key nothing looks for.
+            ["certification"] = entry.Certificate,
             ["language"]      = entry.Language,
             ["subtitles"]     = entry.Subtitles,
             ["timeCut"]       = entry.TimeCut,
@@ -300,7 +304,7 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
             ["favoriteCount"] = entry.FavoriteCount,
             ["mrdbId"]        = entry.MrdbId,
             ["mrdbUrl"]       = url,
-            ["releaseDate"]   = entry.ReleaseDate,
+            ["released"]      = entry.ReleaseDate,
         };
 
         return new MediaMetadata
