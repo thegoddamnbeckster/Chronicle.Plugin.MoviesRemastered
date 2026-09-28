@@ -42,6 +42,35 @@ public class MoviesRemasteredMetadataProviderIdentityTests
         var act = () => provider.GetByIdAsync("mrdb:1");
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
+
+    [Fact]
+    public async Task SearchAsync_ReturnsNoCandidates_WithoutMakingAnyRequest()
+    {
+        // Root-caused live (2026-09-28): moviesremastered.com's own robots.txt disallows
+        // /searchresults.php, which this method used to call on every title search. It must
+        // never touch the network at all now -- GetByIdAsync (movieinfo.php, explicitly
+        // allowed) is the only way this plugin can still resolve a match.
+        var provider = new MoviesRemasteredMetadataProvider();
+        provider.Configure(new Dictionary<string, string>());
+
+        var candidates = await provider.SearchAsync(new MediaSearchContext("Snow: Part I"));
+
+        candidates.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void UserAgentDefault_IdentifiesChronicle_NotABrowser()
+    {
+        // Root-caused live (2026-09-28): this used to default to a real Chrome browser string,
+        // identifying this traffic as a browser to moviesremastered.com instead of what it
+        // actually is.
+        var schema = new MoviesRemasteredMetadataProvider().GetSettingsSchema();
+        var uaDefault = schema.Settings.Single(s => s.Key == "user_agent").DefaultValue;
+
+        uaDefault.Should().NotContain("Mozilla");
+        uaDefault.Should().NotContain("Chrome");
+        uaDefault.Should().Contain("Chronicle");
+    }
 }
 
 public class MoviesRemasteredScoreSearchResultTests

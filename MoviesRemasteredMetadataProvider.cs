@@ -10,7 +10,18 @@ namespace Chronicle.Plugin.MoviesRemastered;
 /// <summary>
 /// IMetadataProvider implementation for moviesremastered.com (MRDb).
 /// Supports media type "fanedits" — the same type Chronicle.Plugin.FanEdit declares.
-/// No authentication required; search and detail pages are public.
+/// No authentication required; detail pages (movieinfo.php) are public.
+///
+/// SearchAsync currently finds nothing automatically (see its own doc) -- the only way an item
+/// gets matched to this plugin right now is a pasted moviesremastered.com URL/id via Fix Match.
+/// A real automatic-discovery mechanism is possible without violating robots.txt: the site
+/// publishes /sitemap.xml (itself robots.txt-explicit, not disallowed) listing every one of its
+/// ~3,300 movieinfo.php?id=N pages -- a periodic crawl of that sitemap plus each new/changed
+/// page could build a local title index for SearchAsync to match against, entirely through
+/// allowed endpoints. Not built yet; ScoreSearchResult/Normalise/Levenshtein* below and
+/// MoviesRemasteredScraper.ParseSearchResults are the title-matching pieces that mechanism would
+/// reuse, kept rather than deleted for that reason -- they are otherwise unreachable from
+/// production code right now.
 /// </summary>
 public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
 {
@@ -63,9 +74,12 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
             {
                 Key          = "user_agent",
                 Label        = "User-Agent String",
+                Description  = "Identifies Chronicle to the server. Root-caused live (2026-09-28): " +
+                                "this used to default to a real Chrome browser string, which " +
+                                "identifies this traffic as a browser instead of what it actually is.",
                 Type         = SettingType.Text,
                 Required     = false,
-                DefaultValue = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                DefaultValue = "Chronicle/1.0 (+https://github.com/thegoddamnbeckster/Chronicle)",
             },
         ]
     };
@@ -75,7 +89,7 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
     {
         var delayMs = settings.TryGetValue("request_delay_ms", out var d) && int.TryParse(d, out var di) ? di : 1000;
         var ua      = settings.GetValueOrDefault("user_agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+            "Chronicle/1.0 (+https://github.com/thegoddamnbeckster/Chronicle)");
 
         _limiter = new MoviesRemasteredRateLimiter(delayMs);
         _scraper = new MoviesRemasteredScraper();
@@ -95,53 +109,28 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
     private static readonly Regex _trailingYear = new(@"\s*\(\d{4}\)\s*$");
     private static readonly Regex _punctuation   = new(@"[^a-z0-9\s]");
 
-    public async Task<IReadOnlyList<ScoredCandidate>> SearchAsync(
+    /// <summary>
+    /// No longer searches -- moviesremastered.com's own robots.txt disallows
+    /// <c>/searchresults.php</c> (it explicitly Allows <c>/movieinfo.php</c>, <c>/index.php</c>,
+    /// and <c>/user/</c>, and disallows searchresults.php/viewreview.php/follow.php/
+    /// moreresults.php alongside its admin/account paths). Root-caused live (2026-09-28): this
+    /// method's automatic title search hit exactly the disallowed endpoint on every enrichment
+    /// attempt.
+    ///
+    /// Returns no candidates now. Code review (2026-09-28) caught the accompanying claim here
+    /// ("GetByIdAsync still works ... so this plugin still functions") as materially misleading:
+    /// nothing in Chronicle ever emits an "mrdb:"-prefixed cross-reference id automatically (no
+    /// other plugin points at this one, and this provider declares no accepted cross-ref
+    /// prefixes), so GetByIdAsync is reachable ONLY via a user manually pasting a
+    /// moviesremastered.com URL/id through Fix Match. Automatic discovery is fully off for now,
+    /// not merely "no longer by title" -- see this class's own doc for the sitemap-based
+    /// replacement that could restore it without violating robots.txt.
+    /// </summary>
+    public Task<IReadOnlyList<ScoredCandidate>> SearchAsync(
         MediaSearchContext context, CancellationToken ct = default)
     {
         EnsureConfigured();
-
-        var titles = new List<string> { context.Name };
-        if (context.AltTitles is { Count: > 0 })
-            titles.AddRange(context.AltTitles);
-        titles = titles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-        var seen       = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var candidates = new List<ScoredCandidate>();
-
-        foreach (var title in titles)
-        {
-            if (candidates.Count >= 10) break;
-
-            await _limiter!.ThrottleAsync(ct);
-            var query = Uri.EscapeDataString(_trailingYear.Replace(title, ""));
-            var url   = $"{BaseUrl}/searchresults.php?searchtype=Title&genre=&franchise=&certificate=&award=&language=&fanedittype=&searchterm={query}";
-            var resp  = await _http!.GetAsync(url, ct);
-            if (!resp.IsSuccessStatusCode) continue;
-
-            var html    = await resp.Content.ReadAsStringAsync(ct);
-            var results = _scraper!.ParseSearchResults(html);
-
-            foreach (var r in results)
-            {
-                if (!seen.Add(r.Url)) continue;
-                var (score, reason) = ScoreSearchResult(context, r);
-                if (score >= ScoreThreshold)
-                    candidates.Add(new ScoredCandidate(
-                        Metadata: new MediaMetadata
-                        {
-                            Title          = r.Title,
-                            Overview       = r.Synopsis,
-                            Year           = r.Year,
-                            RuntimeMinutes = r.RuntimeMinutes,
-                            Rating         = r.Rating,
-                            ExternalId     = UrlToExternalId(r.Url),
-                        },
-                        Score: score,
-                        ScoreReason: reason));
-            }
-        }
-
-        return candidates.OrderByDescending(c => c.Score).Take(10).ToList();
+        return Task.FromResult<IReadOnlyList<ScoredCandidate>>([]);
     }
 
     internal static (int Score, string Reason) ScoreSearchResult(MediaSearchContext ctx, MoviesRemasteredSearchResult r)

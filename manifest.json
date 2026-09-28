@@ -1,7 +1,7 @@
 {
   "plugin_id":             "chronicle.plugin.moviesremastered",
   "name":                  "Movies Remastered (MRDb)",
-  "version":               "1.0.1",
+  "version":               "1.0.2",
   "author":                "Chronicle Contributors",
   "description":           "Fetches fan edit metadata from the Movies Remastered Database (moviesremastered.com / MRDb), a community fanedit archive. No account required. Please use responsibly — a minimum 1-second delay between requests is enforced.",
   "min_chronicle_version": "0.1.0",
@@ -14,7 +14,7 @@
     {
       "task_id":         "fetch-missing-metadata",
       "display_name":    "Fetch Missing Metadata",
-      "description":     "Looks up MRDb metadata for fan edits that don't have it yet.",
+      "description":     "Currently a no-op: automatic title search is disabled (moviesremastered.com's own robots.txt disallows the search endpoint), and nothing else supplies this plugin an id to look up. Use Fix Match with a moviesremastered.com URL to match an item manually.",
       "default_cron":    null,
       "default_enabled": false,
       "schedulable":     false,
