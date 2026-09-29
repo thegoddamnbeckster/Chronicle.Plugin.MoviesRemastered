@@ -12,16 +12,26 @@ namespace Chronicle.Plugin.MoviesRemastered;
 /// Supports media type "fanedits" — the same type Chronicle.Plugin.FanEdit declares.
 /// No authentication required; detail pages (movieinfo.php) are public.
 ///
-/// SearchAsync currently finds nothing automatically (see its own doc) -- the only way an item
-/// gets matched to this plugin right now is a pasted moviesremastered.com URL/id via Fix Match.
-/// A real automatic-discovery mechanism is possible without violating robots.txt: the site
-/// publishes /sitemap.xml (itself robots.txt-explicit, not disallowed) listing every one of its
-/// ~3,300 movieinfo.php?id=N pages -- a periodic crawl of that sitemap plus each new/changed
-/// page could build a local title index for SearchAsync to match against, entirely through
-/// allowed endpoints. Not built yet; ScoreSearchResult/Normalise/Levenshtein* below and
-/// MoviesRemasteredScraper.ParseSearchResults are the title-matching pieces that mechanism would
-/// reuse, kept rather than deleted for that reason -- they are otherwise unreachable from
-/// production code right now.
+/// SearchAsync never calls moviesremastered.com directly — /searchresults.php is disallowed by
+/// the site's own robots.txt (it explicitly Allows /movieinfo.php, /index.php, and /user/, and
+/// disallows searchresults.php/viewreview.php/follow.php/moreresults.php alongside its
+/// admin/account paths). Root-caused live (2026-09-28): this method's automatic title search
+/// used to hit exactly that disallowed endpoint on every enrichment attempt.
+///
+/// Automatic discovery instead matches against a local title/year index built out-of-band by
+/// <see cref="MoviesRemasteredSyncIndexTask"/> (the "sync-search-index" background task) from
+/// the site's own /sitemap.xml (explicitly allowed) plus each listed movieinfo.php page -- see
+/// that class's own doc for the full mechanism. SearchAsync itself makes no network call; it
+/// just reads whatever <see cref="MoviesRemasteredSearchIndexStore"/> has on disk (empty until
+/// that task has run at least once) and scores it with <see cref="ScoreSearchResult"/>/
+/// <see cref="Normalise"/>/the Levenshtein helpers below, the same title-matching logic every
+/// other network-search-based plugin in this codebase uses. A user can still paste a
+/// moviesremastered.com URL/id directly via Fix Match regardless of index state.
+///
+/// <see cref="MoviesRemasteredScraper.ParseSearchResults"/> parses the /searchresults.php result
+/// page HTML specifically and has no role here -- it stays permanently unreachable from
+/// production code unless that disallowed endpoint is called again, which nothing in this
+/// plugin does.
 /// </summary>
 public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
 {
@@ -31,6 +41,7 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
     private MoviesRemasteredRateLimiter? _limiter;
     private MoviesRemasteredScraper?     _scraper;
     private HttpClient?                  _http;
+    private string?                      _indexPath;
 
     // ── Identity ──────────────────────────────────────────────────────────
     public string PluginId => "chronicle.plugin.moviesremastered";
@@ -95,6 +106,22 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
         _scraper = new MoviesRemasteredScraper();
         _http    = new HttpClient();
         _http.DefaultRequestHeaders.Add("User-Agent", ua);
+
+        // Same reserved key MoviesRemasteredSyncIndexTask.Configure reads -- both must resolve
+        // to the same path since one writes the index and the other reads it. See
+        // IPluginTask.DataDirectorySettingsKey's own doc for why this is the only way a plugin
+        // can get a stable directory of its own.
+        var dataDir = settings.GetValueOrDefault(IPluginTask.DataDirectorySettingsKey);
+        _indexPath = dataDir is null ? null : Path.Combine(dataDir, "search-index.json");
+    }
+
+    /// <summary>Test-only seam — bypasses Configure()'s real HttpClient/index-path resolution.</summary>
+    internal void ConfigureForTesting(HttpClient http, MoviesRemasteredRateLimiter limiter, string? indexPath = null)
+    {
+        _http      = http;
+        _limiter   = limiter;
+        _scraper   = new MoviesRemasteredScraper();
+        _indexPath = indexPath;
     }
 
     private void EnsureConfigured()
@@ -110,27 +137,42 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
     private static readonly Regex _punctuation   = new(@"[^a-z0-9\s]");
 
     /// <summary>
-    /// No longer searches -- moviesremastered.com's own robots.txt disallows
-    /// <c>/searchresults.php</c> (it explicitly Allows <c>/movieinfo.php</c>, <c>/index.php</c>,
-    /// and <c>/user/</c>, and disallows searchresults.php/viewreview.php/follow.php/
-    /// moreresults.php alongside its admin/account paths). Root-caused live (2026-09-28): this
-    /// method's automatic title search hit exactly the disallowed endpoint on every enrichment
-    /// attempt.
-    ///
-    /// Returns no candidates now. Code review (2026-09-28) caught the accompanying claim here
-    /// ("GetByIdAsync still works ... so this plugin still functions") as materially misleading:
-    /// nothing in Chronicle ever emits an "mrdb:"-prefixed cross-reference id automatically (no
-    /// other plugin points at this one, and this provider declares no accepted cross-ref
-    /// prefixes), so GetByIdAsync is reachable ONLY via a user manually pasting a
-    /// moviesremastered.com URL/id through Fix Match. Automatic discovery is fully off for now,
-    /// not merely "no longer by title" -- see this class's own doc for the sitemap-based
-    /// replacement that could restore it without violating robots.txt.
+    /// Matches <paramref name="context"/> against the local index built by
+    /// <see cref="MoviesRemasteredSyncIndexTask"/> — see this class's own doc for why that
+    /// exists instead of calling moviesremastered.com's disallowed /searchresults.php directly.
+    /// Makes no network call: returns empty if the index file doesn't exist yet (the sync task
+    /// has never run) or has no entry scoring above <see cref="ScoreThreshold"/>.
     /// </summary>
     public Task<IReadOnlyList<ScoredCandidate>> SearchAsync(
         MediaSearchContext context, CancellationToken ct = default)
     {
         EnsureConfigured();
-        return Task.FromResult<IReadOnlyList<ScoredCandidate>>([]);
+
+        if (_indexPath is null)
+            return Task.FromResult<IReadOnlyList<ScoredCandidate>>([]);
+
+        var index = MoviesRemasteredSearchIndexStore.Load(_indexPath);
+        var candidates = new List<ScoredCandidate>();
+
+        foreach (var entry in index.Entries)
+        {
+            var result = new MoviesRemasteredSearchResult { Title = entry.Title, Year = entry.Year };
+            var (score, reason) = ScoreSearchResult(context, result);
+            if (score < ScoreThreshold) continue;
+
+            candidates.Add(new ScoredCandidate(
+                Metadata: new MediaMetadata
+                {
+                    Title      = entry.Title,
+                    Year       = entry.Year,
+                    ExternalId = $"mrdb:{entry.MrdbId}",
+                },
+                Score: score,
+                ScoreReason: reason));
+        }
+
+        return Task.FromResult<IReadOnlyList<ScoredCandidate>>(
+            [.. candidates.OrderByDescending(c => c.Score).Take(10)]);
     }
 
     internal static (int Score, string Reason) ScoreSearchResult(MediaSearchContext ctx, MoviesRemasteredSearchResult r)

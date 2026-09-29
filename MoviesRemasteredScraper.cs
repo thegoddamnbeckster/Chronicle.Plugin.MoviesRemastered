@@ -10,6 +10,25 @@ internal sealed class MoviesRemasteredScraper
     private static readonly Regex _idFromUrl  = new(@"movieinfo\.php\?id=(\d+)", RegexOptions.IgnoreCase);
     private static readonly Regex _hmsRuntime = new(@"(\d+)h:(\d+)m:(\d+)s", RegexOptions.IgnoreCase);
 
+    // ── Sitemap ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Extracts every movieinfo.php numeric id from a sitemap.xml document — the id list
+    /// <see cref="MoviesRemasteredSyncIndexTask"/> diffs against its local index to find fan
+    /// edits it hasn't crawled yet. Deliberately tolerant: regex over the raw &lt;loc&gt; text
+    /// rather than a strict XML-schema parse, since a malformed/truncated sitemap (a partial
+    /// download, a stray non-ASCII byte) should still yield whatever ids it can rather than
+    /// throwing away the whole batch.
+    /// </summary>
+    public List<int> ParseSitemapIds(string xml)
+    {
+        var ids = new HashSet<int>();
+        foreach (Match m in _idFromUrl.Matches(xml))
+            if (int.TryParse(m.Groups[1].Value, out var id))
+                ids.Add(id);
+        return [.. ids];
+    }
+
     // ── Search results ────────────────────────────────────────────────────────
 
     public List<MoviesRemasteredSearchResult> ParseSearchResults(string html)

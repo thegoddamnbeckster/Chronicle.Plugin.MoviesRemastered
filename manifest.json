@@ -1,7 +1,7 @@
 {
   "plugin_id":             "chronicle.plugin.moviesremastered",
   "name":                  "Movies Remastered (MRDb)",
-  "version":               "1.0.2",
+  "version":               "1.1.0",
   "author":                "Chronicle Contributors",
   "description":           "Fetches fan edit metadata from the Movies Remastered Database (moviesremastered.com / MRDb), a community fanedit archive. No account required. Please use responsibly — a minimum 1-second delay between requests is enforced.",
   "min_chronicle_version": "0.1.0",
@@ -12,9 +12,21 @@
   "fixMatchHint":          "Enter a moviesremastered.com URL (e.g. https://www.moviesremastered.com/movieinfo.php?id=12179) or a bare MRDb numeric ID",
   "background_tasks": [
     {
+      "task_id":         "sync-search-index",
+      "display_name":    "Sync Search Index",
+      "description":     "Builds the local title index that automatic matching (Fetch Missing Metadata) searches against, from moviesremastered.com's own sitemap.xml plus each fan edit's page — this is how automatic discovery works without ever calling the site's disallowed search endpoint. A first run crawls the whole site (~3,300 pages at a minimum 1-second delay each, roughly an hour); later runs only fetch pages added since the last sync, which is normally quick. Run this at least once before relying on Fetch Missing Metadata for this plugin; without it, automatic matching finds nothing.",
+      "default_cron":    "0 5 * * 0",
+      "default_enabled": false,
+      "schedulable":     true,
+      "run_confirmation": {
+        "title":   "Sync MRDb search index?",
+        "message": "A first-time sync crawls every fan edit on Movies Remastered (~3,300 pages) with a minimum 1-second delay between requests — expect roughly an hour. Later syncs only fetch pages added since the last run and are much faster. Please don't run this more than about once a week."
+      }
+    },
+    {
       "task_id":         "fetch-missing-metadata",
       "display_name":    "Fetch Missing Metadata",
-      "description":     "Currently a no-op: automatic title search is disabled (moviesremastered.com's own robots.txt disallows the search endpoint), and nothing else supplies this plugin an id to look up. Use Fix Match with a moviesremastered.com URL to match an item manually.",
+      "description":     "Matches unmatched fan edits by title against the local search index (built by the Sync Search Index task) and fetches full MRDb metadata for each match. Finds nothing until Sync Search Index has run at least once. A title can also always be matched manually via Fix Match with a moviesremastered.com URL.",
       "default_cron":    null,
       "default_enabled": false,
       "schedulable":     false,

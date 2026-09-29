@@ -74,6 +74,48 @@ public class MoviesRemasteredScraperSearchTests
     }
 }
 
+public class MoviesRemasteredScraperSitemapTests
+{
+    private static MoviesRemasteredScraper Scraper() => new();
+
+    [Fact]
+    public void ParseSitemapIds_ExtractsAllMovieinfoIds()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+              <url><loc>https://www.moviesremastered.com/movieinfo.php?id=1</loc></url>
+              <url><loc>https://www.moviesremastered.com/movieinfo.php?id=12179</loc></url>
+              <url><loc>https://www.moviesremastered.com/index.php</loc></url>
+            </urlset>
+            """;
+
+        var ids = Scraper().ParseSitemapIds(xml);
+
+        ids.Should().BeEquivalentTo([1, 12179]);
+    }
+
+    [Fact]
+    public void ParseSitemapIds_DedupesRepeatedIds()
+    {
+        const string xml = """
+            <url><loc>https://www.moviesremastered.com/movieinfo.php?id=5</loc></url>
+            <url><loc>https://www.moviesremastered.com/movieinfo.php?id=5</loc></url>
+            """;
+
+        Scraper().ParseSitemapIds(xml).Should().ContainSingle().Which.Should().Be(5);
+    }
+
+    [Fact]
+    public void ParseSitemapIds_NoMatches_ReturnsEmpty_DoesNotThrow()
+    {
+        var act = () => Scraper().ParseSitemapIds("<html>not a sitemap</html>");
+
+        act.Should().NotThrow();
+        act().Should().BeEmpty();
+    }
+}
+
 public class MoviesRemasteredScraperDetailTests
 {
     private static MoviesRemasteredScraper Scraper() => new();
