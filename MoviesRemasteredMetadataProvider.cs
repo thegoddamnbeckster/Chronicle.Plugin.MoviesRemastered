@@ -104,7 +104,7 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
 
         _limiter = new MoviesRemasteredRateLimiter(delayMs);
         _scraper = new MoviesRemasteredScraper();
-        _http    = new HttpClient();
+        _http    = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         _http.DefaultRequestHeaders.Add("User-Agent", ua);
 
         // Same reserved key MoviesRemasteredSyncIndexTask.Configure reads -- both must resolve

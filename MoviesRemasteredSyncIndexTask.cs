@@ -56,7 +56,7 @@ public sealed class MoviesRemasteredSyncIndexTask : IPluginTask
 
         _limiter = new MoviesRemasteredRateLimiter(delayMs);
         _scraper = new MoviesRemasteredScraper();
-        _http = new HttpClient();
+        _http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
         _http.DefaultRequestHeaders.Add("User-Agent", ua);
         _indexPath = Path.Combine(dataDir, "search-index.json");
     }
