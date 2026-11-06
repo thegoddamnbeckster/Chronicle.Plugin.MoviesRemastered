@@ -46,7 +46,7 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
     // ── Identity ──────────────────────────────────────────────────────────
     public string PluginId => "chronicle.plugin.moviesremastered";
     public string Name     => "Movies Remastered (MRDb)";
-    public string Version  => "1.0.0";
+    public string Version  => System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(MoviesRemasteredMetadataProvider).Assembly)?.InformationalVersion.Split('+')[0] ?? "1.1.0";
     public string Author   => "Chronicle Contributors";
 
     // ── Capabilities ──────────────────────────────────────────────────────
@@ -259,14 +259,8 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
         return MapToMetadata(entry, url);
     }
 
-    public async Task<byte[]> GetImageAsync(string url, CancellationToken ct = default)
-    {
-        EnsureConfigured();
-        await _limiter!.ThrottleAsync(ct);
-        var resp = await _http!.GetAsync(url, ct);
-        resp.EnsureSuccessStatusCode();
-        return await resp.Content.ReadAsByteArrayAsync(ct);
-    }
+    public Task<byte[]> GetImageAsync(string url, CancellationToken ct = default)
+        => throw new NotSupportedException("Images are loaded by the browser straight from the address in the metadata; this plugin has nothing to fetch.");
 
     public async Task<bool> HealthCheckAsync(CancellationToken ct = default)
     {
