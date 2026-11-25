@@ -1,7 +1,7 @@
 {
   "plugin_id":             "chronicle.plugin.moviesremastered",
   "name":                  "Movies Remastered (MRDb)",
-  "version":               "1.1.1",
+  "version":               "1.2.0",
   "author":                "Chronicle Contributors",
   "description":           "Fetches fan edit metadata from the Movies Remastered Database (moviesremastered.com / MRDb), a community fanedit archive. No account required. Please use responsibly — a minimum 1-second delay between requests is enforced.",
   "min_chronicle_version": "0.1.0",
@@ -46,6 +46,16 @@
         "title":   "Re-sync all MRDb metadata?",
         "message": "This will re-fetch MRDb metadata for every fan edit in your library. Movies Remastered is a small community site — each request has a minimum 1-second delay. On a large library this will take a very long time. Please use this sparingly."
       }
+    }
+  ],
+  "rating_sources": [
+    {
+      "key":          "mrdb",
+      "display_name": "MRDb",
+      "plain_rating": true,
+      "scale":        10,
+      "star":         "single",
+      "votes_field":  "ratingVotes"
     }
   ]
 }

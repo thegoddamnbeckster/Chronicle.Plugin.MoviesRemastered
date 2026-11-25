@@ -223,6 +223,16 @@ public class MoviesRemasteredScraperDetailTests
     }
 
     [Fact]
+    public void ParseDetailPage_ReadsTheRatingAndItsVoteCount_AsTheSiteShowsThem()
+    {
+        var html = DetailHtml.Replace("<i class=\"fa-solid fa-star\"></i> No votes", "<i class=\"fa-solid fa-star\"></i> 10 / 10 4 Votes");
+        var entry = Scraper().ParseDetailPage(html, "x");
+        entry.Rating.Should().Be(10);
+        entry.RatingVotes.Should().Be(4);
+        Scraper().ParseDetailPage(DetailHtml, "x").RatingVotes.Should().BeNull();
+    }
+
+    [Fact]
     public void ParseDetailPage_ExtractsStats()
     {
         var entry = Scraper().ParseDetailPage(DetailHtml, "x");

@@ -216,6 +216,9 @@ internal sealed class MoviesRemasteredScraper
                             System.Globalization.NumberStyles.Any,
                             System.Globalization.CultureInfo.InvariantCulture, out var r))
                             entry.Rating = r;
+                        // The page reads "10 / 10 4 Votes" (or "1 Vote").
+                        var vm = Regex.Match(text, @"(\d[\d,]*)\s+Votes?", RegexOptions.IgnoreCase);
+                        if (vm.Success && int.TryParse(vm.Groups[1].Value.Replace(",", ""), out var votes)) entry.RatingVotes = votes;
                     }
                     break;
                 case "views":

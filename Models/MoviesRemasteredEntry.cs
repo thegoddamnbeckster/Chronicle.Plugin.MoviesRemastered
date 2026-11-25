@@ -10,6 +10,8 @@ internal sealed class MoviesRemasteredEntry
     public string? PosterUrl      { get; set; }
     public List<string> Genres    { get; set; } = [];
     public double? Rating         { get; set; }
+    /// <summary>How many votes the site's rating rests on ("4 Votes"); null when it shows none.</summary>
+    public int?    RatingVotes    { get; set; }
     public List<string> Tags      { get; set; } = [];
 
     // Faneditor

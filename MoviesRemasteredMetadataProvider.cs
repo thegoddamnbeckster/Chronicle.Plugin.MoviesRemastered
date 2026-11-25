@@ -320,6 +320,7 @@ public sealed class MoviesRemasteredMetadataProvider : IMetadataProvider
             ["certification"] = entry.Certificate,
             ["language"]      = entry.Language,
             ["subtitles"]     = entry.Subtitles,
+            ["ratingVotes"]   = entry.RatingVotes,
             ["timeCut"]       = entry.TimeCut,
             ["timeAdded"]     = entry.TimeAdded,
             ["intentions"]    = entry.Intentions,
